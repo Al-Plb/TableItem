@@ -2,19 +2,16 @@
     <div class="q-pa-md">
       <q-table
         title="Treats"
-        :data="datas"
+        :data="data.info"
         :columns="columns"
         row-key="id"
         :pagination.sync="pagination"
         @request="onRequest"
-        selection="none"
-        v-if='!showCard'
-        :filter="filter"
+        v-if='!showSelectedElmt'
       >
-      
         <template v-slot:top-right>
-          <q-input dense debounce="300" color="primary" v-model="filter">
-            
+          <q-select borderless v-model="searchField" :options="fields" label="Search on" @input="fetchData" style="width: 150px" bg-color="blue-grey-11" class="q-pb-md"/>
+          <q-input dense debounce="300" color="primary" v-model="filter" @input="fetchData">
             <template v-slot:append>
               <q-icon name="search" />
             </template>
@@ -27,22 +24,24 @@
             class="cursor-pointer" 
             @click.native="selectRow(props.row)"
             >
-                <q-td v-for="item in colmns" :key="item" :props="props">{{ props.row[item] }}</q-td> 
+                <q-td v-for="item in fields" :key="item" :props="props">{{ props.row[item] }}</q-td> 
             </q-tr>
         </template> 
       </q-table>
 
-
-      <template>
+      <template v-if='showSelectedElmt'>
         <div class="q-pa-md row items-start q-gutter-md" >
-            <q-card class="my-card" v-if='showCard'>
+            <q-card class="my-card">
                 <q-btn class="float-right" @click="switchShow">Closed</q-btn>
                 <div class="text-h6 q-pa-md">Infos element</div>
-                <q-card-section v-for="item in colmns">
+                <q-card-section v-for="item in fields" :key="item">
                     {{item}}: {{selectedItem[item]}}
                 </q-card-section>
             </q-card>
         </div>
+        <div class="q-pa-md row items-start q-gutter-md" >
+        <column-chart :data="[['Dependencies', dataChart]]"></column-chart>
+      </div>
      </template>
     </div>    
 </template>
@@ -52,44 +51,44 @@ export default {
   name:'ApiResult',
   data: function() {
     return {
-        filter: "",
-        showCard: false,
-        selectedItem: {},
-        colmns: [
-          "name",
-          "type",
-          "client",
-          "family"
-        ],
-        pagination: {               
-            page: 1,        
-            rowsPerPage: 5,        
-            rowsNumber: 0      
-        },
-        columns: [
-            {
-            name: 'name',
-            required: true,
-            label: 'name',
-            align: 'left',
-            field: row => row.name,
-            sortable: true
-            },
-            { name: 'client', align: 'center', label: 'client', field: 'client', sortable: true },
-            { name: 'family', label: 'family', field: 'family', sortable: true },
-            { name: 'type', label: 'type', field: 'type', sortable: true },
-        ],
-        datas: []
-    }
-    
-  },
-  watch: {
-    filtered: function() {
-      this.filter
+      filter: "",
+      showSelectedElmt: false,
+      selectedItem: {},
+      selectedId: "",
+      searchField: "name",
+      fields: [
+        "name",
+        "client",
+        "family",
+        "type"
+      ],
+      pagination: {               
+          page: 1,        
+          rowsPerPage: 5,        
+          rowsNumber: 0      
+      },
+      columns: [
+          {
+          name: 'name',
+          required: true,
+          label: 'name',
+          align: 'left',
+          field: row => row.name,
+          sortable: true
+          },
+          { name: 'client', align: 'center', label: 'client', field: 'client', sortable: true },
+          { name: 'family', label: 'family', field: 'family', sortable: true },
+          { name: 'type', label: 'type', field: 'type', sortable: true },
+      ],
+      data: {
+        info : [],
+        id : [],
+      },
+      dataChart : ""
     }
   },
   computed: {
-    offset() {      
+    offset() {       
       return this.pagination.rowsPerPage * (this.pagination.page - 1);    
     },    
     limit() {      
@@ -97,32 +96,37 @@ export default {
     },
   },
   mounted() {
-   this.fetchData();
+   this.fetchData(); 
   }, 
   methods: {
     fetchData() {
            this.axios.get("https://api.cmdb-uat.corp.org.ebrc.local/items?limit=" + 
-           this.limit + "&offset=" + this.offset+"&filter={\"info.name\":{\"$regex\":\""+ this.filter + "\",\"$options\":\"i\"}}")
+           this.limit + "&offset=" + this.offset+"&filter={\"info." + this.searchField +"\":{\"$regex\":\""+ this.filter + "\",\"$options\":\"i\"}}")
           .then(response => {
-            //console.log(response.data.data);
-            this.datas = _.map(response.data.data, 'info');
+            this.data.info = _.map(response.data.data, 'info');
             this.pagination.rowsNumber = response.data.total;
+            this.data.id = _.map(response.data.data,'_id.$oid');
+            //console.log(this.searchField)
           });
     },
-    onRequest(props) {
+    fetchId(value) {
+        this.axios.get("https://api.cmdb-uat.corp.org.ebrc.local/items/" + this.data.id[value.__index])
+        .then(response => {
+          this.dataChart = response.data.dependencies.length
+        } );
+    },
+    onRequest(props) {  
         this.pagination = props.pagination;
         this.fetchData();
     },
-    selectRow(value) { 
-        //console.log(value)
+    selectRow(value) {
         this.selectedItem = value;
         this.switchShow();
-        //console.log(this.datas)
+        this.fetchId(value);
     },
     switchShow() {
-        this.showCard = !this.showCard
-    }
-
+        this.showSelectedElmt = !this.showSelectedElmt
+    }    
   }
 }
 </script>
